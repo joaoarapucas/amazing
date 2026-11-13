@@ -1,8 +1,10 @@
 #ifndef AMAZING_MAZE_H
 #define AMAZING_MAZE_H
 
+#include <optional>
 #include <vector>
 #include "generators.h"
+#include "solvers.h"
 
 namespace amazing {
 
@@ -26,6 +28,11 @@ class Maze {
     const Cell& cell(int x, int y) const { return grid[y][x]; }
 
     void generate(GenAlgo algo, int start_x = 0, int start_y = 0);
+
+    // Solves from (0, 0) to (width - 1, height - 1).
+    std::optional<Path> solve(SolveAlgo algo) const;
+    std::optional<Path> solve(SolveAlgo algo, int start_x, int start_y, int end_x, int end_y) const;
+
     void to_json();
 };
 

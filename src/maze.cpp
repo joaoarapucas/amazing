@@ -1,6 +1,7 @@
 #include <vector>
 #include <amazing/maze.h>
 #include <amazing/generators.h>
+#include <amazing/solvers.h>
 
 namespace amazing {
 
@@ -20,6 +21,18 @@ void Maze::generate(GenAlgo algo, int start_x, int start_y) {
       generate_BinaryTree(*this);
     break;
   }
+}
+
+std::optional<Path> Maze::solve(SolveAlgo algo) const {
+  return solve(algo, 0, 0, width - 1, height - 1);
+}
+
+std::optional<Path> Maze::solve(SolveAlgo algo, int start_x, int start_y, int end_x, int end_y) const {
+  switch (algo) {
+    case SolveAlgo::LeftWallFollower:
+      return solve_LeftWallFollower(*this, start_x, start_y, end_x, end_y);
+  }
+  return std::nullopt;
 }
 
 } // namespace amazing
