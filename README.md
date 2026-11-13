@@ -15,10 +15,16 @@ duas células.
 
 ## Resolvedores
 
-| `SolveAlgo`        | Descrição                                          |
-|--------------------|----------------------------------------------------|
-| `LeftWallFollower` | Segue a parede pela esquerda até alcançar o fim    |
-| `RightWallFollower`| Segue a parede pela direita até alcançar o fim     |
+Os resolvedores simulam um robô dentro do labirinto: só enxergam as paredes da
+célula em que estão. Além disso podem conhecer as dimensões do labirinto e as
+coordenadas do fim, mas nunca paredes de células por onde não passaram.
+
+| `SolveAlgo`         | Descrição                                                        | Garante chegar?          |
+|---------------------|------------------------------------------------------------------|--------------------------|
+| `LeftWallFollower`  | Segue a parede pela esquerda                                     | Só em labirintos perfeitos |
+| `RightWallFollower` | Segue a parede pela direita                                      | Só em labirintos perfeitos |
+| `Greedy`            | Vai para o vizinho aberto mais próximo do fim (Manhattan), sem memória | Não                |
+| `Dijkstra`          | Dijkstra online (flood fill do Micromouse): supõe passagens não vistas abertas, segue o caminho mais curto do mapa conhecido e replaneja ao descobrir paredes | Sim, sempre que o fim é alcançável |
 
 Um resolvedor devolve `std::optional<Path>`, onde `Path` é um
 `std::vector<Move>` com todos os movimentos (`Up`, `Right`, `Down`, `Left`)
@@ -29,9 +35,9 @@ fim inalcançável ou laço detectado). Início igual ao fim gera um caminho vaz
 Os valores de `Move` coincidem com `Cell::Side`, então
 `maze.cell(x, y).walls[static_cast<int>(move)]` é a parede atravessada.
 
-O seguidor de parede sempre encontra a saída em labirintos perfeitos. Em
-labirintos com ciclos ele pode circular uma "ilha" sem chegar ao fim; nesse
-caso o laço é detectado e o resultado é `std::nullopt`.
+Quando um resolvedor entra em ciclo (o seguidor de parede circulando uma
+"ilha", o guloso indo e voltando de um beco), o laço é detectado e o resultado
+é `std::nullopt`.
 
 ## Uso
 

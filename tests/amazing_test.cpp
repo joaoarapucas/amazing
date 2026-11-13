@@ -8,10 +8,13 @@
 //   - todas as células alcançáveis a partir de (0, 0).
 //
 // Todo solver deve devolver uma sequência de movimentos que, reproduzida a
-// partir do início, atravessa apenas paredes abertas e termina no fim.
+// partir do início, atravessa apenas paredes abertas e termina no fim, e não
+// pode depender de paredes de células por onde não passou.
 
 #include <cstdio>
 #include <queue>
+#include <random>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -179,6 +182,8 @@ const char* name(SolveAlgo algo)
     switch (algo) {
     case SolveAlgo::LeftWallFollower: return "LeftWallFollower";
     case SolveAlgo::RightWallFollower: return "RightWallFollower";
+    case SolveAlgo::Greedy: return "Greedy";
+    case SolveAlgo::Dijkstra: return "Dijkstra";
     }
     return "?";
 }
@@ -249,30 +254,81 @@ int replayPath(const Maze& maze, const Path& path, int sx, int sy, int ex, int e
     return static_cast<int>(reduced.size());
 }
 
-void checkSolution(const Maze& maze, SolveAlgo algo, int sx, int sy, int ex, int ey, const char* label)
+const SolveAlgo allSolvers[] = {
+    SolveAlgo::LeftWallFollower, SolveAlgo::RightWallFollower, SolveAlgo::Greedy, SolveAlgo::Dijkstra};
+
+bool isWallFollower(SolveAlgo algo)
+{
+    return algo == SolveAlgo::LeftWallFollower || algo == SolveAlgo::RightWallFollower;
+}
+
+// Solvers que sempre chegam ao fim em labirintos perfeitos.
+bool completeOnPerfectMazes(SolveAlgo algo)
+{
+    return algo != SolveAlgo::Greedy;
+}
+
+// Células por onde o caminho passa, incluindo o início.
+std::set<std::pair<int, int>> visitedCells(const Path& path, int sx, int sy)
+{
+    std::set<std::pair<int, int>> cells = {{sx, sy}};
+    for (Move m : path) {
+        sx += dx[static_cast<int>(m)];
+        sy += dy[static_cast<int>(m)];
+        cells.insert({sx, sy});
+    }
+    return cells;
+}
+
+// Abre passagens aleatórias em um labirinto perfeito, criando ciclos.
+void addLoops(Maze& maze, std::mt19937& rng, int count)
+{
+    const int w = maze.get_width();
+    const int h = maze.get_height();
+    for (int i = 0; i < count; ++i) {
+        const int x = static_cast<int>(rng() % w);
+        const int y = static_cast<int>(rng() % h);
+        const int side = rng() % 2 ? Cell::Right : Cell::Bottom;
+        if (x + dx[side] < w && y + dy[side] < h) openWall(maze, x, y, side);
+    }
+}
+
+// Devolve true se o solver chegou ao fim.
+bool checkSolution(const Maze& maze, SolveAlgo algo, int sx, int sy, int ex, int ey, const char* label)
 {
     const auto path = maze.solve(algo, sx, sy, ex, ey);
-    CHECK(path.has_value(), "%s: sem solucao de (%d,%d) a (%d,%d)", label, sx, sy, ex, ey);
-    if (!path) return;
+    if (completeOnPerfectMazes(algo))
+        CHECK(path.has_value(), "%s: sem solucao de (%d,%d) a (%d,%d)", label, sx, sy, ex, ey);
+    if (!path) return false;
 
     const int effective = replayPath(maze, *path, sx, sy, ex, ey, label);
     // Em uma árvore, o caminho sem idas e voltas é o único caminho simples,
     // logo tem exatamente o tamanho do caminho mais curto.
     const int shortest = shortestDistance(maze, sx, sy, ex, ey);
     CHECK(effective == shortest, "%s: caminho efetivo %d, mais curto %d", label, effective, shortest);
-    // Seguir a parede percorre cada passagem no máximo uma vez em cada sentido.
-    const int passages = maze.get_width() * maze.get_height() - 1;
-    CHECK(static_cast<int>(path->size()) <= 2 * passages,
-          "%s: %zu movimentos, limite %d", label, path->size(), 2 * passages);
+
+    if (isWallFollower(algo)) {
+        // Seguir a parede percorre cada passagem no máximo uma vez em cada sentido.
+        const int passages = maze.get_width() * maze.get_height() - 1;
+        CHECK(static_cast<int>(path->size()) <= 2 * passages,
+              "%s: %zu movimentos, limite %d", label, path->size(), 2 * passages);
+    }
+    if (algo == SolveAlgo::Greedy) {
+        // O guloso não tem memória: se repetisse uma célula, entraria em ciclo.
+        const size_t cells = visitedCells(*path, sx, sy).size();
+        CHECK(cells == path->size() + 1, "%s: guloso repetiu celula", label);
+    }
+    return true;
 }
 
 void testSolversOnGeneratedMazes()
 {
     const GenAlgo gens[] = {GenAlgo::DFS, GenAlgo::Prim, GenAlgo::BinaryTree};
-    const SolveAlgo solvers[] = {SolveAlgo::LeftWallFollower, SolveAlgo::RightWallFollower};
     const int sizes[][2] = {{1, 1}, {1, 7}, {7, 1}, {2, 2}, {5, 3}, {15, 15}, {40, 25}};
 
-    for (SolveAlgo solver : solvers) {
+    for (SolveAlgo solver : allSolvers) {
+        int solved = 0;
+        int failed = 0;
         for (GenAlgo gen : gens) {
             for (const auto& size : sizes) {
                 const int w = size[0];
@@ -285,15 +341,123 @@ void testSolversOnGeneratedMazes()
 
                     // Overload padrão: (0, 0) -> (w - 1, h - 1).
                     const auto path = maze.solve(solver);
-                    CHECK(path.has_value(), "%s: sem solucao padrao", label);
+                    if (completeOnPerfectMazes(solver)) CHECK(path.has_value(), "%s: sem solucao padrao", label);
                     if (path) replayPath(maze, *path, 0, 0, w - 1, h - 1, label);
 
-                    checkSolution(maze, solver, 0, 0, w - 1, h - 1, label);
-                    checkSolution(maze, solver, w - 1, h - 1, 0, 0, label);
-                    checkSolution(maze, solver, run % w, (run * 7) % h, (run * 3) % w, (run * 5) % h, label);
+                    for (bool ok : {checkSolution(maze, solver, 0, 0, w - 1, h - 1, label),
+                                    checkSolution(maze, solver, w - 1, h - 1, 0, 0, label),
+                                    checkSolution(maze, solver, run % w, (run * 7) % h,
+                                                  (run * 3) % w, (run * 5) % h, label)})
+                        ++(ok ? solved : failed);
                 }
             }
         }
+        if (solver == SolveAlgo::Greedy) {
+            // Sanidade: a bateria precisa exercitar tanto acertos quanto armadilhas.
+            CHECK(solved > 0 && failed > 0, "Greedy: %d resolvidos, %d falhas", solved, failed);
+        }
+    }
+}
+
+void testSolversOnMazesWithLoops()
+{
+    std::mt19937 rng(12345);
+    for (int run = 0; run < 100; ++run) {
+        const int w = 3 + run % 20;
+        const int h = 3 + (run * 7) % 15;
+        Maze maze(w, h);
+        maze.generate(run % 2 ? GenAlgo::DFS : GenAlgo::Prim);
+        addLoops(maze, rng, w * h / 5);
+
+        const int sx = static_cast<int>(rng() % w), sy = static_cast<int>(rng() % h);
+        const int ex = static_cast<int>(rng() % w), ey = static_cast<int>(rng() % h);
+
+        for (SolveAlgo solver : allSolvers) {
+            char label[96];
+            std::snprintf(label, sizeof label, "%s/ciclos %dx%d", name(solver), w, h);
+            const auto path = maze.solve(solver, sx, sy, ex, ey);
+            // Só o Dijkstra garante chegar com ciclos; os demais, se chegarem,
+            // precisam ter feito um caminho válido.
+            if (solver == SolveAlgo::Dijkstra)
+                CHECK(path.has_value(), "%s: sem solucao de (%d,%d) a (%d,%d)", label, sx, sy, ex, ey);
+            if (path) replayPath(maze, *path, sx, sy, ex, ey, label);
+        }
+    }
+}
+
+// Um solver não pode ler paredes de células por onde não passou: alterar
+// passagens entre células não visitadas não pode mudar o caminho.
+void testSolversDoNotPeek()
+{
+    std::mt19937 rng(54321);
+    for (SolveAlgo solver : allSolvers) {
+        int compared = 0;
+        for (int run = 0; run < 60; ++run) {
+            const int w = 4 + run % 15;
+            const int h = 4 + (run * 3) % 11;
+            Maze maze(w, h);
+            maze.generate(run % 3 == 0 ? GenAlgo::BinaryTree : GenAlgo::DFS);
+            if (run % 2) addLoops(maze, rng, w * h / 5);
+
+            const auto path = maze.solve(solver);
+            if (!path) continue;
+            const auto seen = visitedCells(*path, 0, 0);
+
+            Maze altered = maze;
+            for (int y = 0; y < h; ++y)
+                for (int x = 0; x < w; ++x)
+                    for (int side : {Cell::Right, Cell::Bottom}) {
+                        const int nx = x + dx[side];
+                        const int ny = y + dy[side];
+                        if (nx >= w || ny >= h || seen.count({x, y}) || seen.count({nx, ny})) continue;
+                        if (rng() % 2) continue;
+                        const bool wall = !altered.cell(x, y).walls[side];
+                        altered.cell(x, y).walls[side] = wall;
+                        altered.cell(nx, ny).walls[(side + 2) % 4] = wall;
+                    }
+
+            const auto again = altered.solve(solver);
+            CHECK(again && *again == *path, "%s %dx%d: caminho mudou com paredes nao vistas", name(solver), w, h);
+            ++compared;
+        }
+        CHECK(compared > 0, "%s: nenhum caso comparado", name(solver));
+    }
+}
+
+void testGreedyAndDijkstraKnownPaths()
+{
+    // Armadilha para o guloso: o fim (1,0) fica logo acima do início (1,1),
+    // atrás de uma parede. (2,1) é um beco tão próximo do fim quanto (0,1).
+    //   (0,0) - (1,0)   (2,0)
+    //     |
+    //   (0,1) - (1,1) - (2,1)
+    Maze trap(3, 2);
+    openWall(trap, 0, 0, Cell::Right);
+    openWall(trap, 0, 0, Cell::Bottom);
+    openWall(trap, 0, 1, Cell::Right);
+    openWall(trap, 1, 1, Cell::Right);
+
+    // Guloso: vai ao beco (2,1), volta a (1,1), vai ao beco de novo... ciclo.
+    CHECK(!trap.solve(SolveAlgo::Greedy, 1, 1, 1, 0), "guloso deveria cair na armadilha");
+
+    // Dijkstra: tenta o beco (empate, Right antes de Left), descobre que é
+    // fechado, replaneja e contorna pela esquerda.
+    const auto dijkstra = trap.solve(SolveAlgo::Dijkstra, 1, 1, 1, 0);
+    const Path expected = {Move::Right, Move::Left, Move::Left, Move::Up, Move::Right};
+    CHECK(dijkstra && *dijkstra == expected, "dijkstra armadilha: caminho incorreto (%zu movimentos)",
+          dijkstra ? dijkstra->size() : 0);
+
+    // Grade 3x3 toda aberta: os seguidores de parede nunca chegam ao centro,
+    // guloso e Dijkstra chegam pelo caminho mais curto.
+    Maze open(3, 3);
+    for (int y = 0; y < 3; ++y)
+        for (int x = 0; x < 3; ++x) {
+            if (x < 2) openWall(open, x, y, Cell::Right);
+            if (y < 2) openWall(open, x, y, Cell::Bottom);
+        }
+    for (SolveAlgo algo : {SolveAlgo::Greedy, SolveAlgo::Dijkstra}) {
+        const auto path = open.solve(algo, 0, 0, 1, 1);
+        CHECK(path && *path == Path({Move::Right, Move::Down}), "%s centro: caminho incorreto", name(algo));
     }
 }
 
@@ -351,7 +515,7 @@ void testWallFollowerKnownPaths()
     }
 }
 
-void testWallFollowerEdgeCases(SolveAlgo algo)
+void testSolverEdgeCases(SolveAlgo algo)
 {
     Maze maze(3, 3);
     maze.generate(GenAlgo::DFS);
@@ -374,14 +538,14 @@ void testWallFollowerEdgeCases(SolveAlgo algo)
     CHECK(!split.solve(algo), "%s: fim isolado resolvido", name(algo));
 
     // Labirinto com ciclo: grade 3x3 toda aberta. Seguindo a parede externa
-    // o resolvedor nunca alcança o centro; deve detectar o laço e parar.
+    // o seguidor de parede nunca alcança o centro; deve detectar o laço e parar.
     Maze open(3, 3);
     for (int y = 0; y < 3; ++y)
         for (int x = 0; x < 3; ++x) {
             if (x < 2) openWall(open, x, y, Cell::Right);
             if (y < 2) openWall(open, x, y, Cell::Bottom);
         }
-    CHECK(!open.solve(algo, 0, 0, 1, 1), "%s: laco nao detectado", name(algo));
+    if (isWallFollower(algo)) CHECK(!open.solve(algo, 0, 0, 1, 1), "%s: laco nao detectado", name(algo));
     // Mas alcança qualquer célula da borda.
     const auto border = open.solve(algo, 0, 0, 0, 2);
     CHECK(border.has_value(), "%s: borda inalcancavel em grade aberta", name(algo));
@@ -406,8 +570,10 @@ int main()
     testPrint();
     testSolversOnGeneratedMazes();
     testWallFollowerKnownPaths();
-    for (SolveAlgo algo : {SolveAlgo::LeftWallFollower, SolveAlgo::RightWallFollower})
-        testWallFollowerEdgeCases(algo);
+    testGreedyAndDijkstraKnownPaths();
+    testSolversOnMazesWithLoops();
+    testSolversDoNotPeek();
+    for (SolveAlgo algo : allSolvers) testSolverEdgeCases(algo);
 
     if (failures) {
         std::fprintf(stderr, "%d falha(s)\n", failures);
