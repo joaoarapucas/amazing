@@ -1,6 +1,8 @@
 #include <vector>
-#include "maze.h"
-#include "generators.h"
+#include <amazing/maze.h>
+#include <amazing/generators.h>
+
+namespace amazing {
 
 Maze::Maze(int w, int h) : width(w), height(h), grid(h, std::vector<Cell>(w)) {}
 
@@ -19,3 +21,5 @@ void Maze::generate(GenAlgo algo, int start_x, int start_y) {
     break;
   }
 }
+
+} // namespace amazing

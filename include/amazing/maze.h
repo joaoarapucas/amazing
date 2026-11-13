@@ -1,8 +1,10 @@
-#ifndef MAZE_H
-#define MAZE_H
+#ifndef AMAZING_MAZE_H
+#define AMAZING_MAZE_H
 
 #include <vector>
 #include "generators.h"
+
+namespace amazing {
 
 struct Cell {
   enum Side { Top, Right, Bottom, Left };
@@ -26,5 +28,7 @@ class Maze {
     void generate(GenAlgo algo, int start_x = 0, int start_y = 0);
     void to_json();
 };
+
+} // namespace amazing
 
 #endif

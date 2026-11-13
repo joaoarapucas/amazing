@@ -1,30 +1,58 @@
-CXX      := g++
-CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -MMD -MP
+# amazing - biblioteca de geração de labirintos
+#
+#   make          compila a biblioteca (build/libamazing.a) e o demo
+#   make lib      apenas a biblioteca
+#   make demo     executável de demonstração (build/maze)
+#   make run      compila e executa o demo
+#   make test     compila e executa os testes
+#
+# Projetos que usam a biblioteca podem repassar CXX, CXXFLAGS e AR:
+#   $(MAKE) -C caminho/amazing lib CXX="$(CXX)" CXXFLAGS="$(CXXFLAGS)"
 
-TARGET   := maze
-SRC      := src
-SRCS     := $(wildcard $(SRC)/*.cpp)
-BUILD    := build
-OBJS     := $(SRCS:$(SRC)/%.cpp=$(BUILD)/%.o)
-DEPS     := $(OBJS:.o=.d)
+CXX      ?= g++
+AR       ?= ar
+CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra
+CPPFLAGS += -Iinclude -MMD -MP
 
-.PHONY: all run clean
+BUILD := build
+LIB   := $(BUILD)/libamazing.a
+DEMO  := $(BUILD)/maze
+TEST  := $(BUILD)/amazing_test
 
-all: $(TARGET)
+SRCS := $(wildcard src/*.cpp)
+OBJS := $(SRCS:src/%.cpp=$(BUILD)/%.o)
+DEPS := $(OBJS:.o=.d) $(BUILD)/main.d $(BUILD)/amazing_test.d
 
-$(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) $^ -o $@
+.PHONY: all lib demo run test clean
 
-$(BUILD)/%.o: $(SRC)/%.cpp | $(BUILD)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+all: lib demo
+
+lib: $(LIB)
+
+demo: $(DEMO)
+
+$(LIB): $(OBJS)
+	$(AR) rcs $@ $^
+
+$(BUILD)/%.o: src/%.cpp | $(BUILD)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+
+$(DEMO): app/main.cpp $(LIB) | $(BUILD)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MF $(BUILD)/main.d $< $(LIB) -o $@
+
+$(TEST): tests/amazing_test.cpp $(LIB) | $(BUILD)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MF $(BUILD)/amazing_test.d $< $(LIB) -o $@
 
 $(BUILD):
 	mkdir -p $@
 
-run: $(TARGET)
-	@./$(TARGET)
+run: $(DEMO)
+	@./$(DEMO)
+
+test: $(TEST)
+	./$(TEST)
 
 clean:
-	rm -rf $(BUILD) $(TARGET)
+	rm -rf $(BUILD)
 
 -include $(DEPS)

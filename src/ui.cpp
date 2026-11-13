@@ -1,7 +1,9 @@
 #include <string>
 #include <vector>
-#include "ui.h"
-#include "maze.h"
+#include <amazing/ui.h>
+#include <amazing/maze.h>
+
+namespace amazing {
 
 namespace {
 
@@ -70,3 +72,5 @@ void print(const Maze& maze, OutputStyle style, std::ostream& out) {
     break;
   }
 }
+
+} // namespace amazing

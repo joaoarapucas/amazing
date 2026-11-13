@@ -2,8 +2,10 @@
 #include <random>
 #include <algorithm>
 #include <utility>
-#include "generators.h"
-#include "maze.h"
+#include <amazing/generators.h>
+#include <amazing/maze.h>
+
+namespace amazing {
 
 void generate_DFS(Maze& maze, int x, int y) {
     maze.cell(x, y).visited = true;
@@ -108,3 +110,5 @@ void generate_BinaryTree(Maze& maze) {
         }
     }
 }
+
+} // namespace amazing
