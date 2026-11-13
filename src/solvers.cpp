@@ -5,7 +5,11 @@
 
 namespace amazing {
 
-std::optional<Path> solve_LeftWallFollower(const Maze& maze, int start_x, int start_y, int end_x, int end_y) {
+namespace {
+
+enum class Hand { Left, Right };
+
+std::optional<Path> follow_wall(const Maze& maze, Hand hand, int start_x, int start_y, int end_x, int end_y) {
     const int width = maze.get_width();
     const int height = maze.get_height();
 
@@ -23,6 +27,10 @@ std::optional<Path> solve_LeftWallFollower(const Maze& maze, int start_x, int st
         return !maze.cell(x, y).walls[dir] && inside(x + dx[dir], y + dy[dir]);
     };
 
+    // Directions are clockwise (Top, Right, Bottom, Left): +1 turns right, +3 turns left.
+    const int toward_wall = hand == Hand::Left ? 3 : 1;
+    const int away_from_wall = hand == Hand::Left ? 1 : 3;
+
     // The walk is deterministic on (cell, heading). With 4 * width * height
     // possible states, walking more moves than that means a state repeated
     // without reaching the end: the follower is circling a loop.
@@ -36,8 +44,13 @@ std::optional<Path> solve_LeftWallFollower(const Maze& maze, int start_x, int st
     while (x != end_x || y != end_y) {
         if (path.size() >= max_moves) return std::nullopt;
 
-        // keep the left hand on the wall: left, straight, right, back
-        const int order[] = {(heading + 3) % 4, heading, (heading + 1) % 4, (heading + 2) % 4};
+        // keep the hand on the wall: turn toward it, straight, turn away, back
+        const int order[] = {
+            (heading + toward_wall) % 4,
+            heading,
+            (heading + away_from_wall) % 4,
+            (heading + 2) % 4
+        };
 
         int next = -1;
         for (int dir : order) {
@@ -57,6 +70,16 @@ std::optional<Path> solve_LeftWallFollower(const Maze& maze, int start_x, int st
     }
 
     return path;
+}
+
+} // namespace
+
+std::optional<Path> solve_LeftWallFollower(const Maze& maze, int start_x, int start_y, int end_x, int end_y) {
+    return follow_wall(maze, Hand::Left, start_x, start_y, end_x, end_y);
+}
+
+std::optional<Path> solve_RightWallFollower(const Maze& maze, int start_x, int start_y, int end_x, int end_y) {
+    return follow_wall(maze, Hand::Right, start_x, start_y, end_x, end_y);
 }
 
 } // namespace amazing

@@ -18,6 +18,7 @@ duas células.
 | `SolveAlgo`        | Descrição                                          |
 |--------------------|----------------------------------------------------|
 | `LeftWallFollower` | Segue a parede pela esquerda até alcançar o fim    |
+| `RightWallFollower`| Segue a parede pela direita até alcançar o fim     |
 
 Um resolvedor devolve `std::optional<Path>`, onde `Path` é um
 `std::vector<Move>` com todos os movimentos (`Up`, `Right`, `Down`, `Left`)

@@ -178,6 +178,7 @@ const char* name(SolveAlgo algo)
 {
     switch (algo) {
     case SolveAlgo::LeftWallFollower: return "LeftWallFollower";
+    case SolveAlgo::RightWallFollower: return "RightWallFollower";
     }
     return "?";
 }
@@ -268,7 +269,7 @@ void checkSolution(const Maze& maze, SolveAlgo algo, int sx, int sy, int ex, int
 void testSolversOnGeneratedMazes()
 {
     const GenAlgo gens[] = {GenAlgo::DFS, GenAlgo::Prim, GenAlgo::BinaryTree};
-    const SolveAlgo solvers[] = {SolveAlgo::LeftWallFollower};
+    const SolveAlgo solvers[] = {SolveAlgo::LeftWallFollower, SolveAlgo::RightWallFollower};
     const int sizes[][2] = {{1, 1}, {1, 7}, {7, 1}, {2, 2}, {5, 3}, {15, 15}, {40, 25}};
 
     for (SolveAlgo solver : solvers) {
@@ -296,19 +297,21 @@ void testSolversOnGeneratedMazes()
     }
 }
 
-void testLeftWallFollowerKnownPaths()
+void testWallFollowerKnownPaths()
 {
     // Corredor horizontal 3x1.
     {
         Maze maze(3, 1);
         openWall(maze, 0, 0, Cell::Right);
         openWall(maze, 1, 0, Cell::Right);
-        const auto path = maze.solve(SolveAlgo::LeftWallFollower);
-        CHECK(path && *path == Path({Move::Right, Move::Right}), "corredor: caminho incorreto");
+        for (SolveAlgo algo : {SolveAlgo::LeftWallFollower, SolveAlgo::RightWallFollower}) {
+            const auto path = maze.solve(algo);
+            CHECK(path && *path == Path({Move::Right, Move::Right}), "%s corredor: caminho incorreto", name(algo));
+        }
     }
 
-    // Grade 2x2 toda aberta: com a mão esquerda na parede, segue a borda
-    // superior (Right, Down). Um seguidor pela direita faria (Down, Right).
+    // Grade 2x2 toda aberta: com a mão esquerda na parede segue a borda
+    // superior (Right, Down); com a mão direita, a esquerda (Down, Right).
     {
         Maze maze(2, 2);
         openWall(maze, 0, 0, Cell::Right);
@@ -316,13 +319,18 @@ void testLeftWallFollowerKnownPaths()
         openWall(maze, 1, 0, Cell::Bottom);
         openWall(maze, 0, 1, Cell::Right);
         const auto path = maze.solve(SolveAlgo::LeftWallFollower);
-        CHECK(path && *path == Path({Move::Right, Move::Down}), "2x2 aberto: caminho incorreto");
+        CHECK(path && *path == Path({Move::Right, Move::Down}), "2x2 aberto: caminho incorreto (esquerda)");
+        const auto right = maze.solve(SolveAlgo::RightWallFollower);
+        CHECK(right && *right == Path({Move::Down, Move::Right}), "2x2 aberto: caminho incorreto (direita)");
     }
 
     // Beco sem saída: o caminho percorrido inclui a ida e a volta.
-    //   (0,0) - (1,0)      inicio (0,1), fim (1,1)
-    //     |                (0,1) -> (0,0) -> (1,0) -> volta -> (0,0) -> (0,1) -> (1,1)
+    //   (0,0) - (1,0)
+    //     |
     //   (0,1) - (1,1)
+    // Esquerda, de (0,1) a (1,1): sobe, entra no beco (1,0), volta e desce.
+    // Direita,  de (0,0) a (1,0): desce, entra no beco (1,1), volta e sobe.
+    // Nos sentidos trocados, cada um chega direto com um único movimento.
     {
         Maze maze(2, 2);
         openWall(maze, 0, 0, Cell::Right);
@@ -330,31 +338,40 @@ void testLeftWallFollowerKnownPaths()
         openWall(maze, 0, 1, Cell::Right);
         const auto path = maze.solve(SolveAlgo::LeftWallFollower, 0, 1, 1, 1);
         const Path expected = {Move::Up, Move::Right, Move::Left, Move::Down, Move::Right};
-        CHECK(path && *path == expected, "beco: caminho incorreto (%zu movimentos)", path ? path->size() : 0);
+        CHECK(path && *path == expected, "beco esquerda: caminho incorreto (%zu movimentos)", path ? path->size() : 0);
+
+        const auto right = maze.solve(SolveAlgo::RightWallFollower, 0, 0, 1, 0);
+        const Path expected_right = {Move::Down, Move::Right, Move::Left, Move::Up, Move::Right};
+        CHECK(right && *right == expected_right, "beco direita: caminho incorreto (%zu movimentos)", right ? right->size() : 0);
+
+        const auto direct_left = maze.solve(SolveAlgo::LeftWallFollower, 0, 0, 1, 0);
+        CHECK(direct_left && *direct_left == Path({Move::Right}), "esquerda direto: caminho incorreto");
+        const auto direct_right = maze.solve(SolveAlgo::RightWallFollower, 0, 1, 1, 1);
+        CHECK(direct_right && *direct_right == Path({Move::Right}), "direita direto: caminho incorreto");
     }
 }
 
-void testLeftWallFollowerEdgeCases()
+void testWallFollowerEdgeCases(SolveAlgo algo)
 {
     Maze maze(3, 3);
     maze.generate(GenAlgo::DFS);
 
     // Início igual ao fim: caminho vazio.
-    const auto same = maze.solve(SolveAlgo::LeftWallFollower, 1, 1, 1, 1);
-    CHECK(same && same->empty(), "inicio == fim deveria gerar caminho vazio");
+    const auto same = maze.solve(algo, 1, 1, 1, 1);
+    CHECK(same && same->empty(), "%s: inicio == fim deveria gerar caminho vazio", name(algo));
 
     // Coordenadas fora do labirinto.
-    CHECK(!maze.solve(SolveAlgo::LeftWallFollower, -1, 0, 2, 2), "inicio fora aceito");
-    CHECK(!maze.solve(SolveAlgo::LeftWallFollower, 0, 0, 3, 2), "fim fora aceito");
+    CHECK(!maze.solve(algo, -1, 0, 2, 2), "%s: inicio fora aceito", name(algo));
+    CHECK(!maze.solve(algo, 0, 0, 3, 2), "%s: fim fora aceito", name(algo));
 
     // Labirinto sem passagens: célula de início fechada.
     Maze closed(3, 3);
-    CHECK(!closed.solve(SolveAlgo::LeftWallFollower), "labirinto fechado resolvido");
+    CHECK(!closed.solve(algo), "%s: labirinto fechado resolvido", name(algo));
 
     // Fim inalcançável: (0,0) e (1,0) conectados, (2,0) isolado.
     Maze split(3, 1);
     openWall(split, 0, 0, Cell::Right);
-    CHECK(!split.solve(SolveAlgo::LeftWallFollower), "fim isolado resolvido");
+    CHECK(!split.solve(algo), "%s: fim isolado resolvido", name(algo));
 
     // Labirinto com ciclo: grade 3x3 toda aberta. Seguindo a parede externa
     // o resolvedor nunca alcança o centro; deve detectar o laço e parar.
@@ -364,19 +381,19 @@ void testLeftWallFollowerEdgeCases()
             if (x < 2) openWall(open, x, y, Cell::Right);
             if (y < 2) openWall(open, x, y, Cell::Bottom);
         }
-    CHECK(!open.solve(SolveAlgo::LeftWallFollower, 0, 0, 1, 1), "laco nao detectado");
+    CHECK(!open.solve(algo, 0, 0, 1, 1), "%s: laco nao detectado", name(algo));
     // Mas alcança qualquer célula da borda.
-    const auto border = open.solve(SolveAlgo::LeftWallFollower, 0, 0, 0, 2);
-    CHECK(border.has_value(), "borda inalcancavel em grade aberta");
-    if (border) replayPath(open, *border, 0, 0, 0, 2, "grade aberta");
+    const auto border = open.solve(algo, 0, 0, 0, 2);
+    CHECK(border.has_value(), "%s: borda inalcancavel em grade aberta", name(algo));
+    if (border) replayPath(open, *border, 0, 0, 0, 2, name(algo));
 
     // Borda externa aberta não pode levar para fora do labirinto.
     Maze leaky(2, 1);
     openWall(leaky, 0, 0, Cell::Right);
     leaky.cell(0, 0).walls[Cell::Top] = false;
     leaky.cell(0, 0).walls[Cell::Left] = false;
-    const auto inside = leaky.solve(SolveAlgo::LeftWallFollower);
-    CHECK(inside && *inside == Path({Move::Right}), "borda aberta: caminho incorreto");
+    const auto inside = leaky.solve(algo);
+    CHECK(inside && *inside == Path({Move::Right}), "%s: borda aberta: caminho incorreto", name(algo));
 }
 
 } // namespace
@@ -388,8 +405,9 @@ int main()
     testStartPosition();
     testPrint();
     testSolversOnGeneratedMazes();
-    testLeftWallFollowerKnownPaths();
-    testLeftWallFollowerEdgeCases();
+    testWallFollowerKnownPaths();
+    for (SolveAlgo algo : {SolveAlgo::LeftWallFollower, SolveAlgo::RightWallFollower})
+        testWallFollowerEdgeCases(algo);
 
     if (failures) {
         std::fprintf(stderr, "%d falha(s)\n", failures);

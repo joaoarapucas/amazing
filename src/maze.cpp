@@ -31,6 +31,9 @@ std::optional<Path> Maze::solve(SolveAlgo algo, int start_x, int start_y, int en
   switch (algo) {
     case SolveAlgo::LeftWallFollower:
       return solve_LeftWallFollower(*this, start_x, start_y, end_x, end_y);
+
+    case SolveAlgo::RightWallFollower:
+      return solve_RightWallFollower(*this, start_x, start_y, end_x, end_y);
   }
   return std::nullopt;
 }
